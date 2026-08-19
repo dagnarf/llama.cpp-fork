@@ -1078,14 +1078,17 @@ struct common_speculative_impl_draft_dflash : public common_speculative_impl {
             return true;
         }
 
-        // Target prefill may contain token IDs or multimodal embeddings. Both
-        // produce the target-layer features used to seed the draft KV cache, so
-        // skipping the embedding batches leaves a hole in the draft's cache and
-        // the next injection fails to initialize.
+        // Target prefill may contain token IDs or multimodal embeddings.
+        // Embedding batches (mtmd image chunks) are skipped: on M-RoPE targets
+        // their rows carry non-linear positions the 1D draft cache cannot
+        // store - a chunk wider than one ubatch fails the KV cache's
+        // consecutive-position check on its second ubatch, and even a
+        // single-ubatch chunk injects rows at bogus draft positions. The hole
+        // this leaves is zero-filled when the next token batch arrives (below).
         // TODO: revisit after https://github.com/ggml-org/llama.cpp/pull/24669 is merged
         const bool has_tokens     = batch_in.token != nullptr;
         const bool has_embeddings = batch_in.embd  != nullptr;
-        if (has_tokens == has_embeddings) {
+        if (has_embeddings || has_tokens == has_embeddings) {
             return true;
         }
 
